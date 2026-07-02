@@ -113,7 +113,12 @@ export default function CipherLayout({ cipher }: CipherLayoutProps) {
         setHistory((prev) => {
           const next = [entry, ...prev].slice(0, 5)
           if (typeof window !== 'undefined') {
-            window.localStorage.setItem(`cryptoviz-history-${cipher.id}`, JSON.stringify(next))
+            try {
+              window.localStorage.setItem(`cryptoviz-history-${cipher.id}`, JSON.stringify(next))
+            } catch (e) {
+              // Silently fail if localStorage is unavailable (quota exceeded, disabled, private mode, etc.)
+              console.warn('Failed to save history:', e)
+            }
           }
           return next
         })
