@@ -12,7 +12,73 @@ import ComparisonChart from '@/components/benchmark/ComparisonChart'
 import DeviceInfoDisplay from '@/components/benchmark/DeviceInfoDisplay'
 import ExportButton from '@/components/benchmark/ExportButton'
 import CategoryTabs from '@/components/benchmark/CategoryTabs'
+import Navbar from '@/components/layout/Navbar'
 import { CIPHER_REGISTRY } from '@/lib/cipher/registry'
+
+// Helper to get benchmark parameters tailored to the cipher to ensure correct and successful execution
+const getBenchmarkParams = (
+  cipherId: string,
+  category: string,
+  inputSize: number,
+  defaultKey: string,
+): { input: string; key: string; options: any } => {
+  const input = BenchmarkEngine.generateInput(inputSize)
+  let key = ''
+  let options: any = {}
+
+  switch (cipherId) {
+    case 'otp':
+      // One-Time Pad key must be at least as long as the input
+      key = BenchmarkEngine.generateInput(inputSize)
+      break
+    case 'caesar':
+      // Shift value between 1 and 25
+      key = Math.floor(Math.random() * 25 + 1).toString()
+      break
+    case 'railfence':
+      // Number of rails (integer >= 2)
+      key = Math.floor(Math.random() * 8 + 3).toString()
+      break
+    case 'rot13':
+      key = ''
+      break
+    case 'aes':
+      // AES-256 key: 32 bytes (64 hex characters), AES-128: 16 bytes (32 hex characters)
+      key = BenchmarkEngine.generateKey(32)
+      break
+    case 'des':
+      // DES key: 8 bytes (16 hex characters)
+      key = BenchmarkEngine.generateKey(16)
+      break
+    case '3des':
+      // 3DES key: 16 bytes (32 hex characters)
+      key = BenchmarkEngine.generateKey(32)
+      break
+    case 'rsa':
+      // RSA demo mode is slow and crashes on large inputs. Use simulated real mode.
+      options = { mode: 'real' }
+      key = defaultKey // "61,53" - needs a valid key format
+      break
+    case 'dh':
+      // DH demo mode expects "a,b" format for input. Use simulated real mode.
+      options = { mode: 'real' }
+      key = defaultKey // "23,5" - needs a valid key format
+      break
+    case 'ecc':
+      // ECC expects private key of 32 bytes (64 hex characters)
+      key = BenchmarkEngine.generateKey(64)
+      break
+    case 'bcrypt':
+      // Bcrypt is slow. For benchmarking, use a low cost factor/rounds
+      options = { rounds: 4 }
+      key = defaultKey
+      break
+    default:
+      key = category === 'hash' ? '' : defaultKey
+  }
+
+  return { input, key, options }
+}
 
 export default function BenchmarkPage() {
   const [selectedAlgorithms, setSelectedAlgorithms] = useState<string[]>([])
@@ -78,13 +144,16 @@ export default function BenchmarkPage() {
         const measurements: number[] = []
 
         try {
-          const input = BenchmarkEngine.generateInput(inputSize)
-          const key = cipherDef.category === 'hash' ? '' : BenchmarkEngine.generateKey(32)
+          const { input, key, options } = getBenchmarkParams(
+            cipherId,
+            cipherDef.category,
+            inputSize,
+            cipherDef.defaultKey,
+          )
 
           // Warm-up run
           try {
-            const direction = cipherDef.category === 'hash' ? 'decrypt' : 'encrypt'
-            await runCipher(direction, cipherId, input, key)
+            await runCipher('encrypt', cipherId, input, key, options)
           } catch (err) {
             // Warm-up might fail, that's ok
           }
@@ -92,8 +161,7 @@ export default function BenchmarkPage() {
           // Run actual benchmarks
           for (let j = 0; j < iterations; j++) {
             try {
-              const direction = cipherDef.category === 'hash' ? 'decrypt' : 'encrypt'
-              const result = await runCipher(direction, cipherId, input, key)
+              const result = await runCipher('encrypt', cipherId, input, key, options)
               measurements.push(BenchmarkEngine.measureCipherTime(result))
             } catch (err) {
               console.error(`Iteration ${j + 1} failed for ${cipherId}:`, err)
@@ -140,7 +208,8 @@ export default function BenchmarkPage() {
   }, [selectedAlgorithms, inputSize, iterations, session, runCipher])
 
   return (
-    <div className="min-h-screen bg-white dark:bg-zinc-950">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 font-sans transition-colors duration-300">
+      <Navbar />
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8 space-y-2">
